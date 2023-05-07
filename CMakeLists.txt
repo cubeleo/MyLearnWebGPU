@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(LearnWebGPU C CXX)
+project(MyLearnWebGPU C CXX)
 set(CMAKE_CXX_STANDARD 20)
 
 include_directories(
