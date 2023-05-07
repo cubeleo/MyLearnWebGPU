@@ -6,6 +6,35 @@
 #include <iostream>
 #include <vector>
 
+const char * shaderSource = R"(
+@vertex
+fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> @builtin(position) vec4<f32>
+{
+    var p = vec2<f32>(0.0, 0.0);
+
+    if (in_vertex_index == 0u)
+    {
+        p = vec2<f32>(-0.5, -0.5);
+    }
+    else if (in_vertex_index == 1u)
+    {
+        p = vec2<f32>(0.5, -0.5);
+    }
+    else
+    {
+        p = vec2<f32>(0.0, 0.5);
+    }
+
+    return vec4<f32>(p, 0.0, 1.0);
+}
+
+@fragment
+fn fs_main() -> @location(0) vec4<f32>
+{
+    return vec4<f32>(0.0, 0.4, 1.0, 1.0);
+}
+)";
+
 int main(int argc, char ** argv)
 {
     if (!glfwInit())
@@ -101,6 +130,68 @@ int main(int argc, char ** argv)
     wgpu::SwapChain swapChain = device.createSwapChain(surface, swapChainDesc);
     std::cout << "Swapchain: " << swapChain << std::endl;
 
+    wgpu::ShaderModuleDescriptor shaderDesc;
+    #ifdef WEBGPU_BACKEND_WGPU
+    shaderDesc.hintCount = 0;
+    shaderDesc.hints = nullptr;
+    #endif
+
+    wgpu::ShaderModuleWGSLDescriptor shaderCodeDesc;
+    // Set the chained struct's header
+    shaderCodeDesc.chain.next = nullptr;
+    shaderCodeDesc.chain.sType = wgpu::SType::ShaderModuleWGSLDescriptor;
+    // Connect the chain
+    shaderDesc.nextInChain = &shaderCodeDesc.chain;
+
+    shaderCodeDesc.code = shaderSource;
+
+    wgpu::ShaderModule shaderModule = device.createShaderModule(shaderDesc);
+
+    wgpu::RenderPipelineDescriptor pipelineDesc;
+    pipelineDesc.vertex.bufferCount = 0;
+    pipelineDesc.vertex.buffers = nullptr;
+    pipelineDesc.vertex.module = shaderModule;
+    pipelineDesc.vertex.entryPoint = "vs_main";
+    pipelineDesc.vertex.constantCount = 0;
+    pipelineDesc.vertex.constants = nullptr;
+
+    pipelineDesc.primitive.topology = wgpu::PrimitiveTopology::TriangleList;
+    pipelineDesc.primitive.stripIndexFormat = wgpu::IndexFormat::Undefined;
+    pipelineDesc.primitive.frontFace = wgpu::FrontFace::CCW;
+    pipelineDesc.primitive.cullMode = wgpu::CullMode::None;
+
+    wgpu::FragmentState fragmentState;
+    fragmentState.module = shaderModule;
+    fragmentState.entryPoint = "fs_main";
+    fragmentState.constantCount = 0;
+    fragmentState.constants = nullptr;
+    pipelineDesc.fragment = &fragmentState;
+
+    pipelineDesc.depthStencil = nullptr;
+
+    wgpu::BlendState blendState;
+    blendState.color.srcFactor = wgpu::BlendFactor::SrcAlpha;
+    blendState.color.dstFactor = wgpu::BlendFactor::OneMinusSrcAlpha;
+    blendState.color.operation = wgpu::BlendOperation::Add;
+    blendState.alpha.srcFactor = wgpu::BlendFactor::Zero;
+    blendState.alpha.dstFactor = wgpu::BlendFactor::One;
+    blendState.alpha.operation = wgpu::BlendOperation::Add;
+
+    wgpu::ColorTargetState colorTarget;
+    colorTarget.format = swapChainFormat;
+    colorTarget.blend = &blendState;
+    colorTarget.writeMask = wgpu::ColorWriteMask::All;
+
+    fragmentState.targetCount = 1;
+    fragmentState.targets = &colorTarget;
+
+    pipelineDesc.multisample.count = 1;
+    pipelineDesc.multisample.mask = ~0u;
+    pipelineDesc.multisample.alphaToCoverageEnabled = false;
+
+    pipelineDesc.layout = nullptr;
+
+    wgpu::RenderPipeline pipeline = device.createRenderPipeline(pipelineDesc);
 
     while (!glfwWindowShouldClose(window))
     {
@@ -136,8 +227,11 @@ int main(int argc, char ** argv)
         renderPassDesc.timestampWrites = nullptr;
 
         wgpu::RenderPassEncoder renderPassEncoder = commandEncoder.beginRenderPass(renderPassDesc);
-        renderPassEncoder.end();
 
+        renderPassEncoder.setPipeline(pipeline);
+        renderPassEncoder.draw(3, 1, 0, 0);
+
+        renderPassEncoder.end();
 
         wgpu::CommandBufferDescriptor cmdBufferDescriptor = {};
         cmdBufferDescriptor.label = "Command buffer";
