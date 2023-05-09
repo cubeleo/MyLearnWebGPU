@@ -5,6 +5,7 @@
 #include "GLFW/glfw3native.h"
 #include "webgpu/webgpu.hpp"
 
+#include <array>
 #include <iostream>
 #include <vector>
 
@@ -19,6 +20,15 @@ constexpr IntT Align(IntT n, SizeT alignment)
     SizeT alignmentMask = alignment - 1;
     return IntT((n + alignmentMask) & ~alignmentMask);
 }
+
+struct MyUniforms
+{
+    std::array<float, 4> color;
+    float time;
+    float _pad[3];
+};
+
+static_assert(sizeof(MyUniforms) % 16 == 0);
 
 int main(int argc, char ** argv)
 {
@@ -196,9 +206,9 @@ int main(int argc, char ** argv)
 
     wgpu::BindGroupLayoutEntry bindingLayout = wgpu::Default;
     bindingLayout.binding = 0;
-    bindingLayout.visibility = wgpu::ShaderStage::Vertex;
+    bindingLayout.visibility = wgpu::ShaderStage::Vertex | wgpu::ShaderStage::Fragment;
     bindingLayout.buffer.type = wgpu::BufferBindingType::Uniform;
-    bindingLayout.buffer.minBindingSize = sizeof(float);
+    bindingLayout.buffer.minBindingSize = sizeof(MyUniforms);
 
     wgpu::BindGroupLayoutDescriptor bindGroupLayoutDesc{};
     bindGroupLayoutDesc.entryCount = 1;
@@ -236,8 +246,12 @@ int main(int argc, char ** argv)
     wgpu::Buffer indexBuffer = device.createBuffer(indexBufferDesc);
     queue.writeBuffer(indexBuffer, 0, (void *)indexData.data(), indexBufferDesc.size);
 
+    MyUniforms myUniforms;
+    myUniforms.time = 0.f;
+    myUniforms.color = { 0.0f, 1.0f, 0.4f, 1.0f };
+
     wgpu::BufferDescriptor uniformBufferDesc{};
-    uniformBufferDesc.size = sizeof(float);
+    uniformBufferDesc.size = sizeof(myUniforms);
     uniformBufferDesc.usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Uniform;
     uniformBufferDesc.mappedAtCreation = false;
     wgpu::Buffer uniformBuffer = device.createBuffer(uniformBufferDesc);
@@ -246,15 +260,13 @@ int main(int argc, char ** argv)
     bindGroupEntry.binding = 0;
     bindGroupEntry.buffer = uniformBuffer;
     bindGroupEntry.offset = 0;
-    bindGroupEntry.size = sizeof(float);
+    bindGroupEntry.size = sizeof(myUniforms);
 
     wgpu::BindGroupDescriptor bindGroupDesc{};
     bindGroupDesc.layout = bindGroupLayout;
     bindGroupDesc.entryCount = bindGroupLayoutDesc.entryCount;
     bindGroupDesc.entries = &bindGroupEntry;
     wgpu::BindGroup bindGroup = device.createBindGroup(bindGroupDesc);
-
-    float currentTime = 0.f;
 
     while (!glfwWindowShouldClose(window))
     {
@@ -268,7 +280,7 @@ int main(int argc, char ** argv)
             break;
         }
 
-        queue.writeBuffer(uniformBuffer, 0, &currentTime, sizeof(float));
+        queue.writeBuffer(uniformBuffer, 0, &myUniforms, sizeof(MyUniforms));
 
         wgpu::CommandEncoderDescriptor commandEncoderDesc{};
         commandEncoderDesc.label = "My command encoder";
@@ -309,7 +321,7 @@ int main(int argc, char ** argv)
 
         swapChain.present();
 
-        currentTime += .01f;
+        myUniforms.time += .01f;
     }
 
     vertexBuffer.destroy();
