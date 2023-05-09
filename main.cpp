@@ -1,8 +1,7 @@
 #include "ResourceLoading.h"
 
+#include "glfw3webgpu.h"
 #include "GLFW/glfw3.h"
-#define GLFW_EXPOSE_NATIVE_WIN32
-#include "GLFW/glfw3native.h"
 #include "webgpu/webgpu.hpp"
 
 #include <array>
@@ -56,18 +55,21 @@ int main(int argc, char ** argv)
         return 1;
     }
 
-    wgpu::SurfaceDescriptorFromWindowsHWND surfaceDescriptorFromWindowsHWND{};
-    surfaceDescriptorFromWindowsHWND.hinstance = GetModuleHandle(NULL);
-    surfaceDescriptorFromWindowsHWND.hwnd = glfwGetWin32Window(window);
-    surfaceDescriptorFromWindowsHWND.chain =
-    {
-        .next = nullptr,
-        .sType = WGPUSType_SurfaceDescriptorFromWindowsHWND
-    };
-    wgpu::SurfaceDescriptor surfaceDescriptor;
-    surfaceDescriptor.nextInChain = (const WGPUChainedStruct*)&surfaceDescriptorFromWindowsHWND;
+    // Non-glfw-specific way to init webgpu on Win32:
+    // wgpu::SurfaceDescriptorFromWindowsHWND surfaceDescriptorFromWindowsHWND{};
+    // surfaceDescriptorFromWindowsHWND.hinstance = GetModuleHandle(NULL);
+    // surfaceDescriptorFromWindowsHWND.hwnd = glfwGetWin32Window(window);
+    // surfaceDescriptorFromWindowsHWND.chain =
+    // {
+    //     .next = nullptr,
+    //     .sType = WGPUSType_SurfaceDescriptorFromWindowsHWND
+    // };
+    // wgpu::SurfaceDescriptor surfaceDescriptor;
+    // surfaceDescriptor.nextInChain = (const WGPUChainedStruct*)&surfaceDescriptorFromWindowsHWND;
 
-    wgpu::Surface surface = instance.createSurface(surfaceDescriptor);
+    // wgpu::Surface surface = instance.createSurface(surfaceDescriptor);
+
+	wgpu::Surface surface = glfwGetWGPUSurface(instance, window);
 
     wgpu::RequestAdapterOptions adapterOptions{};
     adapterOptions.compatibleSurface = surface;

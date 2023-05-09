@@ -17,6 +17,7 @@ endfunction(AddGLFW)
 AddGLFW()
 
 add_subdirectory(Import/WebGPU-distribution-wgpu)
+add_subdirectory(Import/glfw3webgpu)
 
 add_library(WebGPUCPP WebGPUCPP.cpp)
 target_link_libraries(WebGPUCPP webgpu)
@@ -29,7 +30,7 @@ add_executable(App
     main.cpp
 )
 
-target_link_libraries(App WebGPUCPP glfw webgpu)
+target_link_libraries(App WebGPUCPP glfw webgpu glfw3webgpu)
 target_copy_webgpu_binaries(App)
 
 if(DEV_MODE)

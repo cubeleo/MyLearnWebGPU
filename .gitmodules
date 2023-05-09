@@ -1,3 +1,6 @@
 [submodule "Import/glfw"]
 	path = Import/glfw
 	url = https://github.com/glfw/glfw.git
+[submodule "Import/glfw3webgpu"]
+	path = Import/glfw3webgpu
+	url = https://github.com/eliemichel/glfw3webgpu.git
