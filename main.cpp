@@ -1,3 +1,5 @@
+#include "ResourceLoading.h"
+
 #include "GLFW/glfw3.h"
 #define GLFW_EXPOSE_NATIVE_WIN32
 #include "GLFW/glfw3native.h"
@@ -6,34 +8,17 @@
 #include <iostream>
 #include <vector>
 
-const char * shaderSource = R"(
-struct VertexInput
+template <typename IntT, typename SizeT>
+constexpr IntT Align(IntT n, SizeT alignment)
 {
-    @location(0) position: vec2<f32>,
-    @location(1) color: vec3<f32>,
-};
+    if (alignment <= 1)
+    {
+        return n;
+    }
 
-struct VertexOutput
-{
-    @builtin(position) position: vec4<f32>,
-    @location(0) color: vec3<f32>,
-};
-
-@vertex
-fn vs_main(in: VertexInput) -> VertexOutput
-{
-    var out: VertexOutput;
-    out.position = vec4<f32>(in.position, 0.0, 1.0);
-    out.color = in.color;
-    return out;
+    SizeT alignmentMask = alignment - 1;
+    return IntT((n + alignmentMask) & ~alignmentMask);
 }
-
-@fragment
-fn fs_main(in: VertexOutput) -> @location(0) vec4<f32>
-{
-    return vec4<f32>(in.color, 1.0);
-}
-)";
 
 int main(int argc, char ** argv)
 {
@@ -145,23 +130,9 @@ int main(int argc, char ** argv)
     swapChainDesc.presentMode = wgpu::PresentMode::Fifo;
     wgpu::SwapChain swapChain = device.createSwapChain(surface, swapChainDesc);
     std::cout << "Swapchain: " << swapChain << std::endl;
+	std::cout << "Swapchain format: " << swapChainFormat << std::endl;
 
-    wgpu::ShaderModuleDescriptor shaderDesc;
-    #ifdef WEBGPU_BACKEND_WGPU
-    shaderDesc.hintCount = 0;
-    shaderDesc.hints = nullptr;
-    #endif
-
-    wgpu::ShaderModuleWGSLDescriptor shaderCodeDesc;
-    // Set the chained struct's header
-    shaderCodeDesc.chain.next = nullptr;
-    shaderCodeDesc.chain.sType = wgpu::SType::ShaderModuleWGSLDescriptor;
-    // Connect the chain
-    shaderDesc.nextInChain = &shaderCodeDesc.chain;
-
-    shaderCodeDesc.code = shaderSource;
-
-    wgpu::ShaderModule shaderModule = device.createShaderModule(shaderDesc);
+    wgpu::ShaderModule shaderModule = loadShaderModule(RESOURCE_DIR "/shader.wgsl", device);
 
     wgpu::RenderPipelineDescriptor pipelineDesc;
 
@@ -224,31 +195,23 @@ int main(int argc, char ** argv)
 
     wgpu::RenderPipeline pipeline = device.createRenderPipeline(pipelineDesc);
 
-    std::vector<float> vertexData =
-    {
-        -0.5, -0.5,   1.0, 0.0, 0.0,
-        +0.5, -0.5,   0.0, 1.0, 0.0,
-        +0.5, +0.5,   0.0, 0.0, 1.0,
-        -0.5, +0.5,   1.0, 1.0, 0.0
-    };
-    int vertexCount = static_cast<int>(vertexData.size() / 5);
+    std::vector<float> vertexData;
+    std::vector<uint16_t> indexData;
 
-    std::vector<uint16_t> indexData =
-    {
-        0, 1, 3,
-        1, 2, 3
-    };
+    loadGeometry(RESOURCE_DIR "/webgpu.txt", vertexData, indexData);
+
+    int vertexCount = static_cast<int>(vertexData.size() / 5);
     int indexCount = static_cast<int>(indexData.size());
 
-    wgpu::BufferDescriptor bufferDesc = {};
-    bufferDesc.size = vertexData.size() * sizeof(float);
-    bufferDesc.usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Vertex;
-    bufferDesc.mappedAtCreation = false;
-    wgpu::Buffer vertexBuffer = device.createBuffer(bufferDesc);
-    queue.writeBuffer(vertexBuffer, 0, (void *)vertexData.data(), bufferDesc.size);
+    wgpu::BufferDescriptor vertexBufferDesc = {};
+    vertexBufferDesc.size = vertexData.size() * sizeof(float);
+    vertexBufferDesc.usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Vertex;
+    vertexBufferDesc.mappedAtCreation = false;
+    wgpu::Buffer vertexBuffer = device.createBuffer(vertexBufferDesc);
+    queue.writeBuffer(vertexBuffer, 0, (void *)vertexData.data(), vertexBufferDesc.size);
 
     wgpu::BufferDescriptor indexBufferDesc = {};
-    indexBufferDesc.size = indexData.size() * sizeof(uint16_t);
+    indexBufferDesc.size = Align(indexData.size() * sizeof(uint16_t), 4);
     indexBufferDesc.usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Index;
     indexBufferDesc.mappedAtCreation = false;
     wgpu::Buffer indexBuffer = device.createBuffer(indexBufferDesc);
