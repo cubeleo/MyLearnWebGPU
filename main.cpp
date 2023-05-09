@@ -106,7 +106,7 @@ int main(int argc, char ** argv)
     wgpu::RequiredLimits requiredLimits = wgpu::Default;
     requiredLimits.limits.maxVertexAttributes = 2;
     requiredLimits.limits.maxVertexBuffers = 1;
-    requiredLimits.limits.maxBufferSize = 6 * 5 * sizeof(float);
+    requiredLimits.limits.maxBufferSize = 16384 * sizeof(float);
     requiredLimits.limits.maxVertexBufferArrayStride = 5 * sizeof(float);
     requiredLimits.limits.minStorageBufferOffsetAlignment = supportedLimits.limits.minStorageBufferOffsetAlignment;
     requiredLimits.limits.maxInterStageShaderComponents = 3;
@@ -226,23 +226,33 @@ int main(int argc, char ** argv)
 
     std::vector<float> vertexData =
     {
-        -0.5, -0.5, 1.0, 0.0, 0.0,
-        +0.5, -0.5, 0.0, 1.0, 0.0,
-        +0.0,   +0.5, 0.0, 0.0, 1.0,
-
-        -0.55f, -0.5, 1.0, 1.0, 0.0,
-        -0.05f, +0.5, 1.0, 0.0, 1.0,
-        -0.55f, +0.5, 0.0, 1.0, 1.0
+        -0.5, -0.5,   1.0, 0.0, 0.0,
+        +0.5, -0.5,   0.0, 1.0, 0.0,
+        +0.5, +0.5,   0.0, 0.0, 1.0,
+        -0.5, +0.5,   1.0, 1.0, 0.0
     };
     int vertexCount = static_cast<int>(vertexData.size() / 5);
+
+    std::vector<uint16_t> indexData =
+    {
+        0, 1, 3,
+        1, 2, 3
+    };
+    int indexCount = static_cast<int>(indexData.size());
 
     wgpu::BufferDescriptor bufferDesc = {};
     bufferDesc.size = vertexData.size() * sizeof(float);
     bufferDesc.usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Vertex;
     bufferDesc.mappedAtCreation = false;
     wgpu::Buffer vertexBuffer = device.createBuffer(bufferDesc);
-
     queue.writeBuffer(vertexBuffer, 0, (void *)vertexData.data(), bufferDesc.size);
+
+    wgpu::BufferDescriptor indexBufferDesc = {};
+    indexBufferDesc.size = indexData.size() * sizeof(uint16_t);
+    indexBufferDesc.usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Index;
+    indexBufferDesc.mappedAtCreation = false;
+    wgpu::Buffer indexBuffer = device.createBuffer(indexBufferDesc);
+    queue.writeBuffer(indexBuffer, 0, (void *)indexData.data(), indexBufferDesc.size);
 
     while (!glfwWindowShouldClose(window))
     {
@@ -281,7 +291,8 @@ int main(int argc, char ** argv)
 
         encoder.setPipeline(pipeline);
         encoder.setVertexBuffer(0, vertexBuffer, 0, vertexData.size() * sizeof(float));
-        encoder.draw(vertexCount, 1, 0, 0);
+        encoder.setIndexBuffer(indexBuffer, wgpu::IndexFormat::Uint16, 0, indexData.size() * sizeof(uint16_t));
+        encoder.drawIndexed(indexCount, 1, 0, 0, 0);
 
         encoder.end();
 
@@ -294,6 +305,7 @@ int main(int argc, char ** argv)
     }
 
     vertexBuffer.destroy();
+    indexBuffer.destroy();
 
     glfwDestroyWindow(window);
 
