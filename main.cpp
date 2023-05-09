@@ -8,24 +8,9 @@
 
 const char * shaderSource = R"(
 @vertex
-fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> @builtin(position) vec4<f32>
+fn vs_main(@location(0) in_vertex_position: vec2f) -> @builtin(position) vec4<f32>
 {
-    var p = vec2<f32>(0.0, 0.0);
-
-    if (in_vertex_index == 0u)
-    {
-        p = vec2<f32>(-0.5, -0.5);
-    }
-    else if (in_vertex_index == 1u)
-    {
-        p = vec2<f32>(0.5, -0.5);
-    }
-    else
-    {
-        p = vec2<f32>(0.0, 0.5);
-    }
-
-    return vec4<f32>(p, 0.0, 1.0);
+    return vec4<f32>(in_vertex_position, 0.0, 1.0);
 }
 
 @fragment
@@ -98,14 +83,29 @@ int main(int argc, char ** argv)
     //     }
     // }
 
+    wgpu::SupportedLimits supportedLimits;
+
+    adapter.getLimits(&supportedLimits);
+    std::cout << "adapter.maxVertexAttributes: " << supportedLimits.limits.maxVertexAttributes << std::endl;
+
+    wgpu::RequiredLimits requiredLimits = wgpu::Default;
+    requiredLimits.limits.maxVertexAttributes = 1;
+    requiredLimits.limits.maxVertexBuffers = 1;
+    requiredLimits.limits.maxBufferSize = 6 * 2 * sizeof(float);
+    requiredLimits.limits.maxVertexBufferArrayStride = 2 * sizeof(float);
+    requiredLimits.limits.minStorageBufferOffsetAlignment = supportedLimits.limits.minStorageBufferOffsetAlignment;
+
     wgpu::DeviceDescriptor deviceDesc{};
-    deviceDesc.label = "Doteki Device"; // anything works here, that's your call
-    deviceDesc.requiredFeaturesCount = 0; // we do not require any specific feature
-    deviceDesc.requiredLimits = nullptr; // we do not require any specific limit
+    deviceDesc.label = "Doteki Device";
+    deviceDesc.requiredFeaturesCount = 0;
+    deviceDesc.requiredLimits = &requiredLimits;
     deviceDesc.defaultQueue.label = "The default queue";
     wgpu::Device device = adapter.requestDevice(deviceDesc);
 
     std::cout << "Got device: " << device << std::endl;
+
+    device.getLimits(&supportedLimits);
+    std::cout << "device.maxVertexAttributes: " << supportedLimits.limits.maxVertexAttributes << std::endl;
 
     auto onDeviceError = [](WGPUErrorType type, char const* message, void* /* pUserData */)
     {
@@ -148,8 +148,20 @@ int main(int argc, char ** argv)
     wgpu::ShaderModule shaderModule = device.createShaderModule(shaderDesc);
 
     wgpu::RenderPipelineDescriptor pipelineDesc;
-    pipelineDesc.vertex.bufferCount = 0;
-    pipelineDesc.vertex.buffers = nullptr;
+
+    wgpu::VertexAttribute vertexAttrib;
+    vertexAttrib.shaderLocation = 0;
+    vertexAttrib.format = wgpu::VertexFormat::Float32x2;
+    vertexAttrib.offset = 0;
+
+    wgpu::VertexBufferLayout vertexBufferLayout;
+    vertexBufferLayout.attributeCount = 1;
+    vertexBufferLayout.attributes = &vertexAttrib;
+    vertexBufferLayout.arrayStride = 2 * sizeof(float);
+    vertexBufferLayout.stepMode = wgpu::VertexStepMode::Vertex;
+
+    pipelineDesc.vertex.bufferCount = 1;
+    pipelineDesc.vertex.buffers = &vertexBufferLayout;
     pipelineDesc.vertex.module = shaderModule;
     pipelineDesc.vertex.entryPoint = "vs_main";
     pipelineDesc.vertex.constantCount = 0;
@@ -193,6 +205,26 @@ int main(int argc, char ** argv)
 
     wgpu::RenderPipeline pipeline = device.createRenderPipeline(pipelineDesc);
 
+    std::vector<float> vertexData =
+    {
+        -0.5, -0.5,
+        +0.5, -0.5,
+        +0.0, +0.5,
+
+        -0.55f, -0.5,
+        -0.05f, +0.5,
+        -0.55f, +0.5
+    };
+    int vertexCount = static_cast<int>(vertexData.size() / 2);
+
+    wgpu::BufferDescriptor bufferDesc = {};
+    bufferDesc.size = vertexData.size() * sizeof(float);
+    bufferDesc.usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Vertex;
+    bufferDesc.mappedAtCreation = false;
+    wgpu::Buffer vertexBuffer = device.createBuffer(bufferDesc);
+
+    queue.writeBuffer(vertexBuffer, 0, (void *)vertexData.data(), bufferDesc.size);
+
     while (!glfwWindowShouldClose(window))
     {
         glfwPollEvents();
@@ -226,12 +258,13 @@ int main(int argc, char ** argv)
         renderPassDesc.timestampWriteCount = 0;
         renderPassDesc.timestampWrites = nullptr;
 
-        wgpu::RenderPassEncoder renderPassEncoder = commandEncoder.beginRenderPass(renderPassDesc);
+        wgpu::RenderPassEncoder encoder = commandEncoder.beginRenderPass(renderPassDesc);
 
-        renderPassEncoder.setPipeline(pipeline);
-        renderPassEncoder.draw(3, 1, 0, 0);
+        encoder.setPipeline(pipeline);
+        encoder.setVertexBuffer(0, vertexBuffer, 0, vertexData.size() * sizeof(float));
+        encoder.draw(vertexCount, 1, 0, 0);
 
-        renderPassEncoder.end();
+        encoder.end();
 
         wgpu::CommandBufferDescriptor cmdBufferDescriptor = {};
         cmdBufferDescriptor.label = "Command buffer";
@@ -240,6 +273,8 @@ int main(int argc, char ** argv)
 
         swapChain.present();
     }
+
+    vertexBuffer.destroy();
 
     glfwDestroyWindow(window);
 
