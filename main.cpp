@@ -95,6 +95,9 @@ int main(int argc, char ** argv)
     requiredLimits.limits.maxVertexBufferArrayStride = 5 * sizeof(float);
     requiredLimits.limits.minStorageBufferOffsetAlignment = supportedLimits.limits.minStorageBufferOffsetAlignment;
     requiredLimits.limits.maxInterStageShaderComponents = 3;
+    requiredLimits.limits.maxBindGroups = 1;
+    requiredLimits.limits.maxUniformBuffersPerShaderStage = 1;
+    requiredLimits.limits.maxUniformBufferBindingSize = 16 * 4;
 
     wgpu::DeviceDescriptor deviceDesc{};
     deviceDesc.label = "Doteki Device";
@@ -191,7 +194,23 @@ int main(int argc, char ** argv)
     pipelineDesc.multisample.mask = ~0u;
     pipelineDesc.multisample.alphaToCoverageEnabled = false;
 
-    pipelineDesc.layout = nullptr;
+    wgpu::BindGroupLayoutEntry bindingLayout = wgpu::Default;
+    bindingLayout.binding = 0;
+    bindingLayout.visibility = wgpu::ShaderStage::Vertex;
+    bindingLayout.buffer.type = wgpu::BufferBindingType::Uniform;
+    bindingLayout.buffer.minBindingSize = sizeof(float);
+
+    wgpu::BindGroupLayoutDescriptor bindGroupLayoutDesc{};
+    bindGroupLayoutDesc.entryCount = 1;
+    bindGroupLayoutDesc.entries = &bindingLayout;
+    wgpu::BindGroupLayout bindGroupLayout = device.createBindGroupLayout(bindGroupLayoutDesc);
+
+    // Create the pipeline layout
+    wgpu::PipelineLayoutDescriptor layoutDesc{};
+    layoutDesc.bindGroupLayoutCount = 1;
+    layoutDesc.bindGroupLayouts = (WGPUBindGroupLayout*)&bindGroupLayout;
+    wgpu::PipelineLayout layout = device.createPipelineLayout(layoutDesc);
+    pipelineDesc.layout = layout;
 
     wgpu::RenderPipeline pipeline = device.createRenderPipeline(pipelineDesc);
 
@@ -217,6 +236,26 @@ int main(int argc, char ** argv)
     wgpu::Buffer indexBuffer = device.createBuffer(indexBufferDesc);
     queue.writeBuffer(indexBuffer, 0, (void *)indexData.data(), indexBufferDesc.size);
 
+    wgpu::BufferDescriptor uniformBufferDesc{};
+    uniformBufferDesc.size = sizeof(float);
+    uniformBufferDesc.usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Uniform;
+    uniformBufferDesc.mappedAtCreation = false;
+    wgpu::Buffer uniformBuffer = device.createBuffer(uniformBufferDesc);
+
+    wgpu::BindGroupEntry bindGroupEntry{};
+    bindGroupEntry.binding = 0;
+    bindGroupEntry.buffer = uniformBuffer;
+    bindGroupEntry.offset = 0;
+    bindGroupEntry.size = sizeof(float);
+
+    wgpu::BindGroupDescriptor bindGroupDesc{};
+    bindGroupDesc.layout = bindGroupLayout;
+    bindGroupDesc.entryCount = bindGroupLayoutDesc.entryCount;
+    bindGroupDesc.entries = &bindGroupEntry;
+    wgpu::BindGroup bindGroup = device.createBindGroup(bindGroupDesc);
+
+    float currentTime = 0.f;
+
     while (!glfwWindowShouldClose(window))
     {
         glfwPollEvents();
@@ -228,6 +267,8 @@ int main(int argc, char ** argv)
             std::cerr << "Cannot acquire next swap chain texture" << std::endl;
             break;
         }
+
+        queue.writeBuffer(uniformBuffer, 0, &currentTime, sizeof(float));
 
         wgpu::CommandEncoderDescriptor commandEncoderDesc{};
         commandEncoderDesc.label = "My command encoder";
@@ -252,6 +293,8 @@ int main(int argc, char ** argv)
 
         wgpu::RenderPassEncoder encoder = commandEncoder.beginRenderPass(renderPassDesc);
 
+        encoder.setBindGroup(0, bindGroup, 0, nullptr);
+
         encoder.setPipeline(pipeline);
         encoder.setVertexBuffer(0, vertexBuffer, 0, vertexData.size() * sizeof(float));
         encoder.setIndexBuffer(indexBuffer, wgpu::IndexFormat::Uint16, 0, indexData.size() * sizeof(uint16_t));
@@ -265,10 +308,13 @@ int main(int argc, char ** argv)
         queue.submit(1, &command);
 
         swapChain.present();
+
+        currentTime += .01f;
     }
 
     vertexBuffer.destroy();
     indexBuffer.destroy();
+    uniformBuffer.destroy();
 
     glfwDestroyWindow(window);
 
