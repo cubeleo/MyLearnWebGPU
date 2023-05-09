@@ -7,16 +7,31 @@
 #include <vector>
 
 const char * shaderSource = R"(
-@vertex
-fn vs_main(@location(0) in_vertex_position: vec2<f32>) -> @builtin(position) vec4<f32>
+struct VertexInput
 {
-    return vec4<f32>(in_vertex_position, 0.0, 1.0);
+    @location(0) position: vec2<f32>,
+    @location(1) color: vec3<f32>,
+};
+
+struct VertexOutput
+{
+    @builtin(position) position: vec4<f32>,
+    @location(0) color: vec3<f32>,
+};
+
+@vertex
+fn vs_main(in: VertexInput) -> VertexOutput
+{
+    var out: VertexOutput;
+    out.position = vec4<f32>(in.position, 0.0, 1.0);
+    out.color = in.color;
+    return out;
 }
 
 @fragment
-fn fs_main() -> @location(0) vec4<f32>
+fn fs_main(in: VertexOutput) -> @location(0) vec4<f32>
 {
-    return vec4<f32>(0.0, 0.4, 1.0, 1.0);
+    return vec4<f32>(in.color, 1.0);
 }
 )";
 
@@ -89,11 +104,12 @@ int main(int argc, char ** argv)
     std::cout << "adapter.maxVertexAttributes: " << supportedLimits.limits.maxVertexAttributes << std::endl;
 
     wgpu::RequiredLimits requiredLimits = wgpu::Default;
-    requiredLimits.limits.maxVertexAttributes = 1;
+    requiredLimits.limits.maxVertexAttributes = 2;
     requiredLimits.limits.maxVertexBuffers = 1;
-    requiredLimits.limits.maxBufferSize = 6 * 2 * sizeof(float);
-    requiredLimits.limits.maxVertexBufferArrayStride = 2 * sizeof(float);
+    requiredLimits.limits.maxBufferSize = 6 * 5 * sizeof(float);
+    requiredLimits.limits.maxVertexBufferArrayStride = 5 * sizeof(float);
     requiredLimits.limits.minStorageBufferOffsetAlignment = supportedLimits.limits.minStorageBufferOffsetAlignment;
+    requiredLimits.limits.maxInterStageShaderComponents = 3;
 
     wgpu::DeviceDescriptor deviceDesc{};
     deviceDesc.label = "Doteki Device";
@@ -149,15 +165,18 @@ int main(int argc, char ** argv)
 
     wgpu::RenderPipelineDescriptor pipelineDesc;
 
-    wgpu::VertexAttribute vertexAttrib;
-    vertexAttrib.shaderLocation = 0;
-    vertexAttrib.format = wgpu::VertexFormat::Float32x2;
-    vertexAttrib.offset = 0;
+    wgpu::VertexAttribute vertexAttributes[2];
+    vertexAttributes[0].shaderLocation = 0;
+    vertexAttributes[0].format = wgpu::VertexFormat::Float32x2;
+    vertexAttributes[0].offset = 0;
+    vertexAttributes[1].shaderLocation = 1;
+    vertexAttributes[1].format = wgpu::VertexFormat::Float32x3;
+    vertexAttributes[1].offset = 2 * sizeof(float);
 
     wgpu::VertexBufferLayout vertexBufferLayout;
-    vertexBufferLayout.attributeCount = 1;
-    vertexBufferLayout.attributes = &vertexAttrib;
-    vertexBufferLayout.arrayStride = 2 * sizeof(float);
+    vertexBufferLayout.attributeCount = 2;
+    vertexBufferLayout.attributes = &vertexAttributes[0];
+    vertexBufferLayout.arrayStride = 5 * sizeof(float);
     vertexBufferLayout.stepMode = wgpu::VertexStepMode::Vertex;
 
     pipelineDesc.vertex.bufferCount = 1;
@@ -207,15 +226,15 @@ int main(int argc, char ** argv)
 
     std::vector<float> vertexData =
     {
-        -0.5, -0.5,
-        +0.5, -0.5,
-        +0.0, +0.5,
+        -0.5, -0.5, 1.0, 0.0, 0.0,
+        +0.5, -0.5, 0.0, 1.0, 0.0,
+        +0.0,   +0.5, 0.0, 0.0, 1.0,
 
-        -0.55f, -0.5,
-        -0.05f, +0.5,
-        -0.55f, +0.5
+        -0.55f, -0.5, 1.0, 1.0, 0.0,
+        -0.05f, +0.5, 1.0, 0.0, 1.0,
+        -0.55f, +0.5, 0.0, 1.0, 1.0
     };
-    int vertexCount = static_cast<int>(vertexData.size() / 2);
+    int vertexCount = static_cast<int>(vertexData.size() / 5);
 
     wgpu::BufferDescriptor bufferDesc = {};
     bufferDesc.size = vertexData.size() * sizeof(float);
@@ -248,7 +267,7 @@ int main(int argc, char ** argv)
         renderPassColorAttachment.resolveTarget = nullptr;
         renderPassColorAttachment.loadOp = WGPULoadOp_Clear;
         renderPassColorAttachment.storeOp = WGPUStoreOp_Store;
-        renderPassColorAttachment.clearValue = WGPUColor{ 0.9, 0.1, 0.2, 1.0 };
+        renderPassColorAttachment.clearValue = WGPUColor{ 0.1, 0.1, 0.2, 1.0 };
 
         renderPassDesc.colorAttachmentCount = 1;
         renderPassDesc.colorAttachments = &renderPassColorAttachment;
