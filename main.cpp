@@ -8,7 +8,7 @@
 
 const char * shaderSource = R"(
 @vertex
-fn vs_main(@location(0) in_vertex_position: vec2f) -> @builtin(position) vec4<f32>
+fn vs_main(@location(0) in_vertex_position: vec2<f32>) -> @builtin(position) vec4<f32>
 {
     return vec4<f32>(in_vertex_position, 0.0, 1.0);
 }
