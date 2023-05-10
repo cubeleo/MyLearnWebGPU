@@ -2,6 +2,10 @@
 
 #include "glfw3webgpu.h"
 #include "GLFW/glfw3.h"
+#define GLM_FORCE_DEPTH_ZERO_TO_ONE
+#define GLM_FORCE_LEFT_HANDED
+#include "glm/glm.hpp"
+#include "glm/ext.hpp"
 #include "webgpu/webgpu.hpp"
 
 #include <array>
@@ -22,6 +26,8 @@ constexpr IntT Align(IntT n, SizeT alignment)
 
 struct MyUniforms
 {
+    glm::mat4x4 clipFromView;
+    glm::mat4x4 viewFromWorld;
     std::array<float, 4> color;
     float time;
     float _pad[3];
@@ -109,7 +115,7 @@ int main(int argc, char ** argv)
     requiredLimits.limits.maxInterStageShaderComponents = 3;
     requiredLimits.limits.maxBindGroups = 1;
     requiredLimits.limits.maxUniformBuffersPerShaderStage = 1;
-    requiredLimits.limits.maxUniformBufferBindingSize = 16 * 4;
+    requiredLimits.limits.maxUniformBufferBindingSize = 256;
     requiredLimits.limits.maxTextureDimension2D = 4096;
     requiredLimits.limits.maxTextureArrayLayers = 1;
 
@@ -313,6 +319,16 @@ int main(int argc, char ** argv)
             break;
         }
 
+        float near = 0.001f;
+        float far = 100.0f;
+        float ratio = 640.0f / 480.0f;
+        float fov = 1.;
+        myUniforms.clipFromView = glm::perspective(fov, ratio, near, far);
+        myUniforms.viewFromWorld = glm::transpose(glm::mat4x4(
+            1, 0, 0, 0,
+            0, 1, 0, 0,
+            0, 0, 1, 2,
+            0, 0, 0, 1));
         queue.writeBuffer(uniformBuffer, 0, &myUniforms, sizeof(MyUniforms));
 
         wgpu::CommandEncoderDescriptor commandEncoderDesc{};
