@@ -28,6 +28,7 @@ struct MyUniforms
 {
     glm::mat4x4 clipFromView;
     glm::mat4x4 viewFromWorld;
+    glm::mat4x4 worldFromObject;
     std::array<float, 4> color;
     float time;
     float _pad[3];
@@ -107,12 +108,12 @@ int main(int argc, char ** argv)
     std::cout << "adapter.maxVertexAttributes: " << supportedLimits.limits.maxVertexAttributes << std::endl;
 
     wgpu::RequiredLimits requiredLimits = wgpu::Default;
-    requiredLimits.limits.maxVertexAttributes = 2;
+    requiredLimits.limits.maxVertexAttributes = 3;
     requiredLimits.limits.maxVertexBuffers = 1;
     requiredLimits.limits.maxBufferSize = 16384 * sizeof(float);
-    requiredLimits.limits.maxVertexBufferArrayStride = 6 * sizeof(float);
+    requiredLimits.limits.maxVertexBufferArrayStride = 9 * sizeof(float);
     requiredLimits.limits.minStorageBufferOffsetAlignment = supportedLimits.limits.minStorageBufferOffsetAlignment;
-    requiredLimits.limits.maxInterStageShaderComponents = 3;
+    requiredLimits.limits.maxInterStageShaderComponents = 6;
     requiredLimits.limits.maxBindGroups = 1;
     requiredLimits.limits.maxUniformBuffersPerShaderStage = 1;
     requiredLimits.limits.maxUniformBufferBindingSize = 256;
@@ -182,18 +183,21 @@ int main(int argc, char ** argv)
 
     wgpu::RenderPipelineDescriptor pipelineDesc;
 
-    wgpu::VertexAttribute vertexAttributes[2];
+    wgpu::VertexAttribute vertexAttributes[3];
     vertexAttributes[0].shaderLocation = 0;
     vertexAttributes[0].format = wgpu::VertexFormat::Float32x3;
     vertexAttributes[0].offset = 0;
     vertexAttributes[1].shaderLocation = 1;
     vertexAttributes[1].format = wgpu::VertexFormat::Float32x3;
     vertexAttributes[1].offset = 3 * sizeof(float);
+    vertexAttributes[2].shaderLocation = 2;
+    vertexAttributes[2].format = wgpu::VertexFormat::Float32x3;
+    vertexAttributes[2].offset = 6 * sizeof(float);
 
     wgpu::VertexBufferLayout vertexBufferLayout;
-    vertexBufferLayout.attributeCount = 2;
+    vertexBufferLayout.attributeCount = 3;
     vertexBufferLayout.attributes = &vertexAttributes[0];
-    vertexBufferLayout.arrayStride = 6 * sizeof(float);
+    vertexBufferLayout.arrayStride = 9 * sizeof(float);
     vertexBufferLayout.stepMode = wgpu::VertexStepMode::Vertex;
 
     pipelineDesc.vertex.bufferCount = 1;
@@ -266,9 +270,9 @@ int main(int argc, char ** argv)
     std::vector<float> vertexData;
     std::vector<uint16_t> indexData;
 
-    loadGeometry(RESOURCE_DIR "/pyramid.txt", vertexData, indexData, 3);
+    loadGeometry(RESOURCE_DIR "/pyramid.txt", vertexData, indexData, 6);
 
-    int vertexCount = static_cast<int>(vertexData.size() / 6);
+    int vertexCount = static_cast<int>(vertexData.size() / 9);
     int indexCount = static_cast<int>(indexData.size());
 
     wgpu::BufferDescriptor vertexBufferDesc = {};
@@ -324,11 +328,16 @@ int main(int argc, char ** argv)
         float ratio = 640.0f / 480.0f;
         float fov = 1.;
         myUniforms.clipFromView = glm::perspective(fov, ratio, near, far);
-        myUniforms.viewFromWorld = glm::transpose(glm::mat4x4(
-            1, 0, 0, 0,
-            0, 1, 0, 0,
-            0, 0, 1, 2,
-            0, 0, 0, 1));
+
+        auto S = glm::scale(glm::mat4x4(1.0), glm::vec3(0.3f));
+        auto T1 = glm::translate(glm::mat4x4(1.0), glm::vec3(0.5, 0.0, 0.0));
+        auto R1 = glm::rotate(glm::mat4x4(1.0), 2.f * myUniforms.time, glm::vec3(0.0, 0.0, 1.0));
+        myUniforms.worldFromObject = R1 * T1 * S;
+
+        auto R2 = glm::rotate(glm::mat4x4(1.0), -3.0f * 3.14159f / 4.0f, glm::vec3(1.0, 0.0, 0.0));
+        auto T2 = glm::translate(glm::mat4x4(1.0), glm::vec3(0, 0, 2));
+        myUniforms.viewFromWorld = T2 * R2;
+
         queue.writeBuffer(uniformBuffer, 0, &myUniforms, sizeof(MyUniforms));
 
         wgpu::CommandEncoderDescriptor commandEncoderDesc{};
