@@ -1,6 +1,6 @@
 struct VertexInput
 {
-    @location(0) position: vec2<f32>,
+    @location(0) position: vec3<f32>,
     @location(1) color: vec3<f32>,
 };
 
@@ -22,8 +22,17 @@ struct MyUniforms
 fn vs_main(in: VertexInput) -> VertexOutput
 {
     var out: VertexOutput;
-    let offset = vec2<f32>(-0.6875, -0.463) + 0.3 * vec2<f32>(cos(myUniforms.time), sin(myUniforms.time));
-    out.position = vec4<f32>(in.position + offset, 0.0, 1.0);
+    let s = sin(myUniforms.time);
+    let c = cos(myUniforms.time);
+    let R = transpose(mat3x3<f32>(
+        1.0, 0.0, 0.0,
+        0.0,   c,   s,
+        0.0,  -s,   c,
+    ));
+
+    let viewPosition = vec3<f32>(R * in.position + vec3<f32>(0., 0., 0.));
+
+    out.position = vec4<f32>(viewPosition.xy, viewPosition.z * .5 + .5, 1.0);
     out.color = in.color;
     return out;
 }

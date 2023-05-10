@@ -104,12 +104,14 @@ int main(int argc, char ** argv)
     requiredLimits.limits.maxVertexAttributes = 2;
     requiredLimits.limits.maxVertexBuffers = 1;
     requiredLimits.limits.maxBufferSize = 16384 * sizeof(float);
-    requiredLimits.limits.maxVertexBufferArrayStride = 5 * sizeof(float);
+    requiredLimits.limits.maxVertexBufferArrayStride = 6 * sizeof(float);
     requiredLimits.limits.minStorageBufferOffsetAlignment = supportedLimits.limits.minStorageBufferOffsetAlignment;
     requiredLimits.limits.maxInterStageShaderComponents = 3;
     requiredLimits.limits.maxBindGroups = 1;
     requiredLimits.limits.maxUniformBuffersPerShaderStage = 1;
     requiredLimits.limits.maxUniformBufferBindingSize = 16 * 4;
+    requiredLimits.limits.maxTextureDimension2D = 4096;
+    requiredLimits.limits.maxTextureArrayLayers = 1;
 
     wgpu::DeviceDescriptor deviceDesc{};
     deviceDesc.label = "Doteki Device";
@@ -147,22 +149,45 @@ int main(int argc, char ** argv)
     std::cout << "Swapchain: " << swapChain << std::endl;
 	std::cout << "Swapchain format: " << swapChainFormat << std::endl;
 
+    wgpu::TextureFormat depthTextureFormat = wgpu::TextureFormat::Depth24Plus;
+
+    wgpu::TextureDescriptor depthTextureDesc;
+    depthTextureDesc.dimension = wgpu::TextureDimension::_2D;
+    depthTextureDesc.format = depthTextureFormat;
+    depthTextureDesc.mipLevelCount = 1;
+    depthTextureDesc.sampleCount = 1;
+    depthTextureDesc.size = {640, 480, 1};
+    depthTextureDesc.usage = wgpu::TextureUsage::RenderAttachment;
+    depthTextureDesc.viewFormatCount = 1;
+    depthTextureDesc.viewFormats = (WGPUTextureFormat*)&depthTextureFormat;
+    wgpu::Texture depthTexture = device.createTexture(depthTextureDesc);
+
+    wgpu::TextureViewDescriptor depthTextureViewDesc;
+    depthTextureViewDesc.aspect = wgpu::TextureAspect::DepthOnly;
+    depthTextureViewDesc.baseArrayLayer = 0;
+    depthTextureViewDesc.arrayLayerCount = 1;
+    depthTextureViewDesc.baseMipLevel = 0;
+    depthTextureViewDesc.mipLevelCount = 1;
+    depthTextureViewDesc.dimension = wgpu::TextureViewDimension::_2D;
+    depthTextureViewDesc.format = depthTextureFormat;
+    wgpu::TextureView depthTextureView = depthTexture.createView(depthTextureViewDesc);
+
     wgpu::ShaderModule shaderModule = loadShaderModule(RESOURCE_DIR "/shader.wgsl", device);
 
     wgpu::RenderPipelineDescriptor pipelineDesc;
 
     wgpu::VertexAttribute vertexAttributes[2];
     vertexAttributes[0].shaderLocation = 0;
-    vertexAttributes[0].format = wgpu::VertexFormat::Float32x2;
+    vertexAttributes[0].format = wgpu::VertexFormat::Float32x3;
     vertexAttributes[0].offset = 0;
     vertexAttributes[1].shaderLocation = 1;
     vertexAttributes[1].format = wgpu::VertexFormat::Float32x3;
-    vertexAttributes[1].offset = 2 * sizeof(float);
+    vertexAttributes[1].offset = 3 * sizeof(float);
 
     wgpu::VertexBufferLayout vertexBufferLayout;
     vertexBufferLayout.attributeCount = 2;
     vertexBufferLayout.attributes = &vertexAttributes[0];
-    vertexBufferLayout.arrayStride = 5 * sizeof(float);
+    vertexBufferLayout.arrayStride = 6 * sizeof(float);
     vertexBufferLayout.stepMode = wgpu::VertexStepMode::Vertex;
 
     pipelineDesc.vertex.bufferCount = 1;
@@ -184,7 +209,13 @@ int main(int argc, char ** argv)
     fragmentState.constants = nullptr;
     pipelineDesc.fragment = &fragmentState;
 
-    pipelineDesc.depthStencil = nullptr;
+    wgpu::DepthStencilState depthStencilState = wgpu::Default;
+    depthStencilState.depthCompare = wgpu::CompareFunction::Less;
+    depthStencilState.depthWriteEnabled = true;
+    depthStencilState.format = depthTextureFormat;
+    depthStencilState.stencilReadMask = 0;
+    depthStencilState.stencilWriteMask = 0;
+    pipelineDesc.depthStencil = &depthStencilState;
 
     wgpu::BlendState blendState;
     blendState.color.srcFactor = wgpu::BlendFactor::SrcAlpha;
@@ -229,9 +260,9 @@ int main(int argc, char ** argv)
     std::vector<float> vertexData;
     std::vector<uint16_t> indexData;
 
-    loadGeometry(RESOURCE_DIR "/webgpu.txt", vertexData, indexData);
+    loadGeometry(RESOURCE_DIR "/pyramid.txt", vertexData, indexData, 3);
 
-    int vertexCount = static_cast<int>(vertexData.size() / 5);
+    int vertexCount = static_cast<int>(vertexData.size() / 6);
     int indexCount = static_cast<int>(indexData.size());
 
     wgpu::BufferDescriptor vertexBufferDesc = {};
@@ -300,7 +331,17 @@ int main(int argc, char ** argv)
         renderPassDesc.colorAttachmentCount = 1;
         renderPassDesc.colorAttachments = &renderPassColorAttachment;
 
-        renderPassDesc.depthStencilAttachment = nullptr;
+        wgpu::RenderPassDepthStencilAttachment depthStencilAttachment;
+        depthStencilAttachment.view = depthTextureView;
+        depthStencilAttachment.depthClearValue = 1.;
+        depthStencilAttachment.depthLoadOp = wgpu::LoadOp::Clear;
+        depthStencilAttachment.depthStoreOp = wgpu::StoreOp::Store;
+        depthStencilAttachment.depthReadOnly = false;
+        depthStencilAttachment.stencilClearValue = 0;
+        depthStencilAttachment.stencilLoadOp = wgpu::LoadOp::Clear;
+        depthStencilAttachment.stencilStoreOp = wgpu::StoreOp::Store;
+        depthStencilAttachment.stencilReadOnly = false;
+        renderPassDesc.depthStencilAttachment = &depthStencilAttachment;
 
         renderPassDesc.timestampWriteCount = 0;
         renderPassDesc.timestampWrites = nullptr;
