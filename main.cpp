@@ -37,30 +37,58 @@ struct MyUniforms
 
 static_assert(sizeof(MyUniforms) % 16 == 0);
 
-int main(int argc, char ** argv)
+struct Application
+{
+    bool Initialize();
+
+    bool ShouldRun();
+    void OnFrame();
+
+    bool Shutdown();
+
+    GLFWwindow * window = nullptr;
+    wgpu::Instance instance = nullptr;
+    wgpu::Surface surface = nullptr;
+    wgpu::Device device = nullptr;
+    wgpu::Adapter adapter = nullptr;
+    wgpu::Queue queue = nullptr;
+    wgpu::SwapChain swapChain = nullptr;
+    wgpu::RenderPipeline pipeline = nullptr;
+    wgpu::TextureView depthTextureView = nullptr;
+    wgpu::Buffer vertexBuffer = nullptr;
+    wgpu::Buffer uniformBuffer = nullptr;
+    wgpu::BindGroup bindGroup = nullptr;
+
+    int vertexBufferSize;
+    int indexCount;
+
+    MyUniforms myUniforms;
+};
+
+bool Application::Initialize()
 {
     if (!glfwInit())
     {
         std::cerr << "Could not initialize GLFW!\n";
-        return 1;
+        return false;
     }
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    GLFWwindow * window = glfwCreateWindow(640, 480, "Learn WebGPU", NULL, NULL);
+    window = glfwCreateWindow(640, 480, "Learn WebGPU", NULL, NULL);
     if (!window)
     {
         std::cerr << "Could not open window!\n";
         glfwTerminate();
-        return 1;
+        return false;
     }
 
     wgpu::InstanceDescriptor desc{};
-    wgpu::Instance instance = wgpu::createInstance(desc);
+    instance = wgpu::createInstance(desc);
 
     if (!instance)
     {
         std::cerr << "Could not initialize WebGPU!\n";
-        return 1;
+        return false;
     }
 
     // Non-glfw-specific way to init webgpu on Win32:
@@ -75,13 +103,13 @@ int main(int argc, char ** argv)
     // wgpu::SurfaceDescriptor surfaceDescriptor;
     // surfaceDescriptor.nextInChain = (const WGPUChainedStruct*)&surfaceDescriptorFromWindowsHWND;
 
-    // wgpu::Surface surface = instance.createSurface(surfaceDescriptor);
+    // surface = instance.createSurface(surfaceDescriptor);
 
-	wgpu::Surface surface = glfwGetWGPUSurface(instance, window);
+    surface = glfwGetWGPUSurface(instance, window);
 
     wgpu::RequestAdapterOptions adapterOptions{};
     adapterOptions.compatibleSurface = surface;
-    wgpu::Adapter adapter = instance.requestAdapter(adapterOptions);
+    adapter = instance.requestAdapter(adapterOptions);
 
     // {
     //     std::vector<wgpu::FeatureName> features;
@@ -126,7 +154,7 @@ int main(int argc, char ** argv)
     deviceDesc.requiredFeaturesCount = 0;
     deviceDesc.requiredLimits = &requiredLimits;
     deviceDesc.defaultQueue.label = "The default queue";
-    wgpu::Device device = adapter.requestDevice(deviceDesc);
+    device = adapter.requestDevice(deviceDesc);
 
     std::cout << "Got device: " << device << std::endl;
 
@@ -141,7 +169,7 @@ int main(int argc, char ** argv)
     };
     wgpuDeviceSetUncapturedErrorCallback(device, onDeviceError, nullptr /* pUserData */);
 
-    wgpu::Queue queue = device.getQueue();
+    queue = device.getQueue();
 
     std::cout << "Got queue: " << queue << std::endl;
 
@@ -153,9 +181,9 @@ int main(int argc, char ** argv)
     swapChainDesc.format = swapChainFormat;
     swapChainDesc.usage = wgpu::TextureUsage::RenderAttachment;
     swapChainDesc.presentMode = wgpu::PresentMode::Fifo;
-    wgpu::SwapChain swapChain = device.createSwapChain(surface, swapChainDesc);
+    swapChain = device.createSwapChain(surface, swapChainDesc);
     std::cout << "Swapchain: " << swapChain << std::endl;
-	std::cout << "Swapchain format: " << swapChainFormat << std::endl;
+    std::cout << "Swapchain format: " << swapChainFormat << std::endl;
 
     wgpu::TextureFormat depthTextureFormat = wgpu::TextureFormat::Depth24Plus;
 
@@ -164,7 +192,7 @@ int main(int argc, char ** argv)
     depthTextureDesc.format = depthTextureFormat;
     depthTextureDesc.mipLevelCount = 1;
     depthTextureDesc.sampleCount = 1;
-    depthTextureDesc.size = {640, 480, 1};
+    depthTextureDesc.size = { 640, 480, 1 };
     depthTextureDesc.usage = wgpu::TextureUsage::RenderAttachment;
     depthTextureDesc.viewFormatCount = 1;
     depthTextureDesc.viewFormats = (WGPUTextureFormat*)&depthTextureFormat;
@@ -178,7 +206,7 @@ int main(int argc, char ** argv)
     depthTextureViewDesc.mipLevelCount = 1;
     depthTextureViewDesc.dimension = wgpu::TextureViewDimension::_2D;
     depthTextureViewDesc.format = depthTextureFormat;
-    wgpu::TextureView depthTextureView = depthTexture.createView(depthTextureViewDesc);
+    depthTextureView = depthTexture.createView(depthTextureViewDesc);
 
     wgpu::ShaderModule shaderModule = loadShaderModule(RESOURCE_DIR "/shader.wgsl", device);
 
@@ -266,24 +294,25 @@ int main(int argc, char ** argv)
     wgpu::PipelineLayout layout = device.createPipelineLayout(layoutDesc);
     pipelineDesc.layout = layout;
 
-    wgpu::RenderPipeline pipeline = device.createRenderPipeline(pipelineDesc);
+    pipeline = device.createRenderPipeline(pipelineDesc);
 
-    std::vector<uint16_t> indexData = {1, 2, 3};
+    std::vector<uint16_t> indexData = { 1, 2, 3 };
 
     std::vector<VertexAttributes> vertexData;
     bool success = loadGeometryFromObj(RESOURCE_DIR "/pyramid.obj", vertexData);
     if (!success) {
         std::cerr << "Could not load geometry!" << std::endl;
-        return 1;
+        return false;
     }
 
-    int indexCount = static_cast<int>(vertexData.size()); //static_cast<int>(indexData.size());
+    vertexBufferSize = vertexData.size() * sizeof(VertexAttributes);
+    indexCount = static_cast<int>(vertexData.size()); //static_cast<int>(indexData.size());
 
     wgpu::BufferDescriptor vertexBufferDesc = {};
     vertexBufferDesc.size = vertexData.size() * sizeof(VertexAttributes);
     vertexBufferDesc.usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Vertex;
     vertexBufferDesc.mappedAtCreation = false;
-    wgpu::Buffer vertexBuffer = device.createBuffer(vertexBufferDesc);
+    vertexBuffer = device.createBuffer(vertexBufferDesc);
     queue.writeBuffer(vertexBuffer, 0, (void *)vertexData.data(), vertexBufferDesc.size);
 
     // wgpu::BufferDescriptor indexBufferDesc = {};
@@ -293,7 +322,6 @@ int main(int argc, char ** argv)
     // wgpu::Buffer indexBuffer = device.createBuffer(indexBufferDesc);
     // queue.writeBuffer(indexBuffer, 0, (void *)indexData.data(), indexBufferDesc.size);
 
-    MyUniforms myUniforms;
     myUniforms.time = 0.f;
     myUniforms.color = { 0.0f, 1.0f, 0.4f, 1.0f };
 
@@ -301,7 +329,7 @@ int main(int argc, char ** argv)
     uniformBufferDesc.size = sizeof(myUniforms);
     uniformBufferDesc.usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Uniform;
     uniformBufferDesc.mappedAtCreation = false;
-    wgpu::Buffer uniformBuffer = device.createBuffer(uniformBufferDesc);
+    uniformBuffer = device.createBuffer(uniformBufferDesc);
 
     wgpu::BindGroupEntry bindGroupEntry{};
     bindGroupEntry.binding = 0;
@@ -313,14 +341,45 @@ int main(int argc, char ** argv)
     bindGroupDesc.layout = bindGroupLayout;
     bindGroupDesc.entryCount = bindGroupLayoutDesc.entryCount;
     bindGroupDesc.entries = &bindGroupEntry;
-    wgpu::BindGroup bindGroup = device.createBindGroup(bindGroupDesc);
+    bindGroup = device.createBindGroup(bindGroupDesc);
+
+    return true;
+}
+
+bool Application::Shutdown()
+{
+    vertexBuffer.destroy();
+    // indexBuffer.destroy();
+    uniformBuffer.destroy();
+
+    glfwDestroyWindow(window);
+
+    glfwTerminate();
+
+    return true;
+}
+
+bool Application::ShouldRun()
+{
+    return !glfwWindowShouldClose(window);
+}
+
+void Application::OnFrame()
+{
+    glfwPollEvents();
+
+    wgpu::TextureView nextTexture = swapChain.getCurrentTextureView();
+
+    if (!nextTexture)
+    {
+        std::cerr << "Cannot acquire next swap chain texture" << std::endl;
+        return;
+    }
 
     // Model matrix
-    float angle1 = 2.0f;
+    float angle1 = 2.0f * myUniforms.time;
     glm::mat4x4 S = glm::scale(glm::mat4x4(1.0), glm::vec3(0.3f));
     glm::mat4x4 T1 = glm::translate(glm::mat4x4(1.0), glm::vec3(0.5, 0.0, 0.0));
-    glm::mat4x4 R1 = glm::rotate(glm::mat4x4(1.0), angle1, glm::vec3(0.0, 0.0, 1.0));
-    myUniforms.worldFromObject = R1 * T1 * S;
 
     // View matrix
     float angle2 = 3.0f * 3.14159f / 4.0f;
@@ -337,85 +396,80 @@ int main(int argc, char ** argv)
     float fov = 2 * glm::atan(1 / focalLength);
     myUniforms.clipFromView = glm::perspective(fov, ratio, near, far);
 
-    while (!glfwWindowShouldClose(window))
+    auto R1 = glm::rotate(glm::mat4x4(1.0), angle1, glm::vec3(0.0, 0.0, 1.0));
+    myUniforms.worldFromObject = R1 * T1 * S;
+    queue.writeBuffer(uniformBuffer, offsetof(MyUniforms, worldFromObject), &myUniforms.worldFromObject, sizeof(MyUniforms::worldFromObject));
+
+    queue.writeBuffer(uniformBuffer, 0, &myUniforms, sizeof(MyUniforms));
+
+    wgpu::CommandEncoderDescriptor commandEncoderDesc{};
+    commandEncoderDesc.label = "My command encoder";
+    wgpu::CommandEncoder commandEncoder = device.createCommandEncoder(commandEncoderDesc);
+
+    wgpu::RenderPassDescriptor renderPassDesc{};
+
+    wgpu::RenderPassColorAttachment renderPassColorAttachment{};
+    renderPassColorAttachment.view = nextTexture;
+    renderPassColorAttachment.resolveTarget = nullptr;
+    renderPassColorAttachment.loadOp = WGPULoadOp_Clear;
+    renderPassColorAttachment.storeOp = WGPUStoreOp_Store;
+    renderPassColorAttachment.clearValue = WGPUColor{ .05, .05, .05, 1.0 };
+
+    renderPassDesc.colorAttachmentCount = 1;
+    renderPassDesc.colorAttachments = &renderPassColorAttachment;
+
+    wgpu::RenderPassDepthStencilAttachment depthStencilAttachment;
+    depthStencilAttachment.view = depthTextureView;
+    depthStencilAttachment.depthClearValue = 100.0f;
+    depthStencilAttachment.depthLoadOp = wgpu::LoadOp::Clear;
+    depthStencilAttachment.depthStoreOp = wgpu::StoreOp::Store;
+    depthStencilAttachment.depthReadOnly = false;
+    depthStencilAttachment.stencilClearValue = 0;
+    depthStencilAttachment.stencilLoadOp = wgpu::LoadOp::Clear;
+    depthStencilAttachment.stencilStoreOp = wgpu::StoreOp::Store;
+    depthStencilAttachment.stencilReadOnly = false;
+    renderPassDesc.depthStencilAttachment = &depthStencilAttachment;
+
+    renderPassDesc.timestampWriteCount = 0;
+    renderPassDesc.timestampWrites = nullptr;
+
+    wgpu::RenderPassEncoder encoder = commandEncoder.beginRenderPass(renderPassDesc);
+
+    encoder.setBindGroup(0, bindGroup, 0, nullptr);
+
+    encoder.setPipeline(pipeline);
+    encoder.setVertexBuffer(0, vertexBuffer, 0, vertexBufferSize);
+    encoder.draw(indexCount, 1, 0, 0);
+    // encoder.setIndexBuffer(indexBuffer, wgpu::IndexFormat::Uint16, 0, indexData.size() * sizeof(uint16_t));
+    // encoder.drawIndexed(indexCount, 1, 0, 0, 0);
+
+    encoder.end();
+
+    wgpu::CommandBufferDescriptor cmdBufferDescriptor = {};
+    cmdBufferDescriptor.label = "Command buffer";
+    wgpu::CommandBuffer command = commandEncoder.finish(cmdBufferDescriptor);
+    queue.submit(1, &command);
+
+    swapChain.present();
+
+    myUniforms.time += .01f;
+}
+
+int main(int argc, char ** argv)
+{
+    Application app;
+
+    if (!app.Initialize())
     {
-        glfwPollEvents();
-
-        wgpu::TextureView nextTexture = swapChain.getCurrentTextureView();
-
-        if (!nextTexture)
-        {
-            std::cerr << "Cannot acquire next swap chain texture" << std::endl;
-            break;
-        }
-
-        angle1 = myUniforms.time;
-        R1 = glm::rotate(glm::mat4x4(1.0), angle1, glm::vec3(0.0, 0.0, 1.0));
-        myUniforms.worldFromObject = R1 * T1 * S;
-        queue.writeBuffer(uniformBuffer, offsetof(MyUniforms, worldFromObject), &myUniforms.worldFromObject, sizeof(MyUniforms::worldFromObject));
-
-        queue.writeBuffer(uniformBuffer, 0, &myUniforms, sizeof(MyUniforms));
-
-        wgpu::CommandEncoderDescriptor commandEncoderDesc{};
-        commandEncoderDesc.label = "My command encoder";
-        wgpu::CommandEncoder commandEncoder = device.createCommandEncoder(commandEncoderDesc);
-
-        wgpu::RenderPassDescriptor renderPassDesc{};
-
-        wgpu::RenderPassColorAttachment renderPassColorAttachment{};
-        renderPassColorAttachment.view = nextTexture;
-        renderPassColorAttachment.resolveTarget = nullptr;
-        renderPassColorAttachment.loadOp = WGPULoadOp_Clear;
-        renderPassColorAttachment.storeOp = WGPUStoreOp_Store;
-        renderPassColorAttachment.clearValue = WGPUColor{ .05, .05, .05, 1.0 };
-
-        renderPassDesc.colorAttachmentCount = 1;
-        renderPassDesc.colorAttachments = &renderPassColorAttachment;
-
-        wgpu::RenderPassDepthStencilAttachment depthStencilAttachment;
-        depthStencilAttachment.view = depthTextureView;
-        depthStencilAttachment.depthClearValue = 100.0f;
-        depthStencilAttachment.depthLoadOp = wgpu::LoadOp::Clear;
-        depthStencilAttachment.depthStoreOp = wgpu::StoreOp::Store;
-        depthStencilAttachment.depthReadOnly = false;
-        depthStencilAttachment.stencilClearValue = 0;
-        depthStencilAttachment.stencilLoadOp = wgpu::LoadOp::Clear;
-        depthStencilAttachment.stencilStoreOp = wgpu::StoreOp::Store;
-        depthStencilAttachment.stencilReadOnly = false;
-        renderPassDesc.depthStencilAttachment = &depthStencilAttachment;
-
-        renderPassDesc.timestampWriteCount = 0;
-        renderPassDesc.timestampWrites = nullptr;
-
-        wgpu::RenderPassEncoder encoder = commandEncoder.beginRenderPass(renderPassDesc);
-
-        encoder.setBindGroup(0, bindGroup, 0, nullptr);
-
-        encoder.setPipeline(pipeline);
-        encoder.setVertexBuffer(0, vertexBuffer, 0, vertexData.size() * sizeof(VertexAttributes));
-        encoder.draw(indexCount, 1, 0, 0);
-        // encoder.setIndexBuffer(indexBuffer, wgpu::IndexFormat::Uint16, 0, indexData.size() * sizeof(uint16_t));
-        // encoder.drawIndexed(indexCount, 1, 0, 0, 0);
-
-        encoder.end();
-
-        wgpu::CommandBufferDescriptor cmdBufferDescriptor = {};
-        cmdBufferDescriptor.label = "Command buffer";
-        wgpu::CommandBuffer command = commandEncoder.finish(cmdBufferDescriptor);
-        queue.submit(1, &command);
-
-        swapChain.present();
-
-        myUniforms.time += .01f;
+        return -1;
     }
 
-    vertexBuffer.destroy();
-    // indexBuffer.destroy();
-    uniformBuffer.destroy();
+    while (app.ShouldRun())
+    {
+        app.OnFrame();
+    }
 
-    glfwDestroyWindow(window);
-
-    glfwTerminate();
+    app.Shutdown();
 
     return 0;
 }
