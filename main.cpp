@@ -1,4 +1,5 @@
 #include "ResourceLoading.h"
+#include "VertexAttributes.h"
 
 #include "glfw3webgpu.h"
 #include "GLFW/glfw3.h"
@@ -110,7 +111,7 @@ int main(int argc, char ** argv)
     wgpu::RequiredLimits requiredLimits = wgpu::Default;
     requiredLimits.limits.maxVertexAttributes = 3;
     requiredLimits.limits.maxVertexBuffers = 1;
-    requiredLimits.limits.maxBufferSize = 16384 * sizeof(float);
+    requiredLimits.limits.maxBufferSize = 16 * 1024 * 1024;
     requiredLimits.limits.maxVertexBufferArrayStride = 9 * sizeof(float);
     requiredLimits.limits.minStorageBufferOffsetAlignment = supportedLimits.limits.minStorageBufferOffsetAlignment;
     requiredLimits.limits.maxInterStageShaderComponents = 6;
@@ -267,27 +268,30 @@ int main(int argc, char ** argv)
 
     wgpu::RenderPipeline pipeline = device.createRenderPipeline(pipelineDesc);
 
-    std::vector<float> vertexData;
-    std::vector<uint16_t> indexData;
+    std::vector<uint16_t> indexData = {1, 2, 3};
 
-    loadGeometry(RESOURCE_DIR "/pyramid.txt", vertexData, indexData, 6);
+    std::vector<VertexAttributes> vertexData;
+    bool success = loadGeometryFromObj(RESOURCE_DIR "/pyramid.obj", vertexData);
+    if (!success) {
+        std::cerr << "Could not load geometry!" << std::endl;
+        return 1;
+    }
 
-    int vertexCount = static_cast<int>(vertexData.size() / 9);
-    int indexCount = static_cast<int>(indexData.size());
+    int indexCount = static_cast<int>(vertexData.size()); //static_cast<int>(indexData.size());
 
     wgpu::BufferDescriptor vertexBufferDesc = {};
-    vertexBufferDesc.size = vertexData.size() * sizeof(float);
+    vertexBufferDesc.size = vertexData.size() * sizeof(VertexAttributes);
     vertexBufferDesc.usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Vertex;
     vertexBufferDesc.mappedAtCreation = false;
     wgpu::Buffer vertexBuffer = device.createBuffer(vertexBufferDesc);
     queue.writeBuffer(vertexBuffer, 0, (void *)vertexData.data(), vertexBufferDesc.size);
 
-    wgpu::BufferDescriptor indexBufferDesc = {};
-    indexBufferDesc.size = Align(indexData.size() * sizeof(uint16_t), 4);
-    indexBufferDesc.usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Index;
-    indexBufferDesc.mappedAtCreation = false;
-    wgpu::Buffer indexBuffer = device.createBuffer(indexBufferDesc);
-    queue.writeBuffer(indexBuffer, 0, (void *)indexData.data(), indexBufferDesc.size);
+    // wgpu::BufferDescriptor indexBufferDesc = {};
+    // indexBufferDesc.size = Align(indexData.size() * sizeof(uint16_t), 4);
+    // indexBufferDesc.usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Index;
+    // indexBufferDesc.mappedAtCreation = false;
+    // wgpu::Buffer indexBuffer = device.createBuffer(indexBufferDesc);
+    // queue.writeBuffer(indexBuffer, 0, (void *)indexData.data(), indexBufferDesc.size);
 
     MyUniforms myUniforms;
     myUniforms.time = 0.f;
@@ -311,6 +315,28 @@ int main(int argc, char ** argv)
     bindGroupDesc.entries = &bindGroupEntry;
     wgpu::BindGroup bindGroup = device.createBindGroup(bindGroupDesc);
 
+    // Model matrix
+    float angle1 = 2.0f;
+    glm::mat4x4 S = glm::scale(glm::mat4x4(1.0), glm::vec3(0.3f));
+    glm::mat4x4 T1 = glm::translate(glm::mat4x4(1.0), glm::vec3(0.5, 0.0, 0.0));
+    glm::mat4x4 R1 = glm::rotate(glm::mat4x4(1.0), angle1, glm::vec3(0.0, 0.0, 1.0));
+    myUniforms.worldFromObject = R1 * T1 * S;
+
+    // View matrix
+    float angle2 = 3.0f * 3.14159f / 4.0f;
+    glm::vec3 focalPoint(0.0, 0.0, -2.0);
+    glm::mat4x4 R2 = glm::rotate(glm::mat4x4(1.0), -angle2, glm::vec3(1.0, 0.0, 0.0));
+    glm::mat4x4 T2 = glm::translate(glm::mat4x4(1.0), -focalPoint);
+    myUniforms.viewFromWorld = T2 * R2;
+
+    // Projection matrix
+    float ratio = 640.0f / 480.0f;
+    float near = 0.01f;
+    float far = 100.0f;
+    float focalLength = 2.0f;
+    float fov = 2 * glm::atan(1 / focalLength);
+    myUniforms.clipFromView = glm::perspective(fov, ratio, near, far);
+
     while (!glfwWindowShouldClose(window))
     {
         glfwPollEvents();
@@ -323,20 +349,10 @@ int main(int argc, char ** argv)
             break;
         }
 
-        float near = 0.001f;
-        float far = 100.0f;
-        float ratio = 640.0f / 480.0f;
-        float fov = 1.;
-        myUniforms.clipFromView = glm::perspective(fov, ratio, near, far);
-
-        auto S = glm::scale(glm::mat4x4(1.0), glm::vec3(0.3f));
-        auto T1 = glm::translate(glm::mat4x4(1.0), glm::vec3(0.5, 0.0, 0.0));
-        auto R1 = glm::rotate(glm::mat4x4(1.0), 2.f * myUniforms.time, glm::vec3(0.0, 0.0, 1.0));
+        angle1 = myUniforms.time;
+        R1 = glm::rotate(glm::mat4x4(1.0), angle1, glm::vec3(0.0, 0.0, 1.0));
         myUniforms.worldFromObject = R1 * T1 * S;
-
-        auto R2 = glm::rotate(glm::mat4x4(1.0), -3.0f * 3.14159f / 4.0f, glm::vec3(1.0, 0.0, 0.0));
-        auto T2 = glm::translate(glm::mat4x4(1.0), glm::vec3(0, 0, 2));
-        myUniforms.viewFromWorld = T2 * R2;
+        queue.writeBuffer(uniformBuffer, offsetof(MyUniforms, worldFromObject), &myUniforms.worldFromObject, sizeof(MyUniforms::worldFromObject));
 
         queue.writeBuffer(uniformBuffer, 0, &myUniforms, sizeof(MyUniforms));
 
@@ -351,14 +367,14 @@ int main(int argc, char ** argv)
         renderPassColorAttachment.resolveTarget = nullptr;
         renderPassColorAttachment.loadOp = WGPULoadOp_Clear;
         renderPassColorAttachment.storeOp = WGPUStoreOp_Store;
-        renderPassColorAttachment.clearValue = WGPUColor{ 0.1, 0.1, 0.2, 1.0 };
+        renderPassColorAttachment.clearValue = WGPUColor{ .05, .05, .05, 1.0 };
 
         renderPassDesc.colorAttachmentCount = 1;
         renderPassDesc.colorAttachments = &renderPassColorAttachment;
 
         wgpu::RenderPassDepthStencilAttachment depthStencilAttachment;
         depthStencilAttachment.view = depthTextureView;
-        depthStencilAttachment.depthClearValue = 1.;
+        depthStencilAttachment.depthClearValue = 100.0f;
         depthStencilAttachment.depthLoadOp = wgpu::LoadOp::Clear;
         depthStencilAttachment.depthStoreOp = wgpu::StoreOp::Store;
         depthStencilAttachment.depthReadOnly = false;
@@ -376,9 +392,10 @@ int main(int argc, char ** argv)
         encoder.setBindGroup(0, bindGroup, 0, nullptr);
 
         encoder.setPipeline(pipeline);
-        encoder.setVertexBuffer(0, vertexBuffer, 0, vertexData.size() * sizeof(float));
-        encoder.setIndexBuffer(indexBuffer, wgpu::IndexFormat::Uint16, 0, indexData.size() * sizeof(uint16_t));
-        encoder.drawIndexed(indexCount, 1, 0, 0, 0);
+        encoder.setVertexBuffer(0, vertexBuffer, 0, vertexData.size() * sizeof(VertexAttributes));
+        encoder.draw(indexCount, 1, 0, 0);
+        // encoder.setIndexBuffer(indexBuffer, wgpu::IndexFormat::Uint16, 0, indexData.size() * sizeof(uint16_t));
+        // encoder.drawIndexed(indexCount, 1, 0, 0, 0);
 
         encoder.end();
 
@@ -393,7 +410,7 @@ int main(int argc, char ** argv)
     }
 
     vertexBuffer.destroy();
-    indexBuffer.destroy();
+    // indexBuffer.destroy();
     uniformBuffer.destroy();
 
     glfwDestroyWindow(window);

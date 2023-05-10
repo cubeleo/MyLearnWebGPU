@@ -19,6 +19,7 @@ AddGLFW()
 add_subdirectory(Import/WebGPU-distribution-wgpu)
 add_subdirectory(Import/glfw3webgpu)
 add_subdirectory(Import/glm)
+add_subdirectory(Import/tinyobjloader)
 
 add_library(WebGPUCPP WebGPUCPP.cpp)
 target_link_libraries(WebGPUCPP webgpu)
@@ -26,12 +27,13 @@ target_link_libraries(WebGPUCPP webgpu)
 option(DEV_MODE "Set up development helper settings" ON)
 
 add_executable(App
+    main.cpp
     ResourceLoading.h
     ResourceLoading.cpp
-    main.cpp
+    VertexAttributes.h
 )
 
-target_link_libraries(App WebGPUCPP glfw webgpu glfw3webgpu glm::glm)
+target_link_libraries(App WebGPUCPP glfw webgpu glfw3webgpu glm::glm tinyobjloader)
 target_copy_webgpu_binaries(App)
 
 if(DEV_MODE)

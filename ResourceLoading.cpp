@@ -1,5 +1,6 @@
 #include "ResourceLoading.h"
 
+#include "tiny_obj_loader.h"
 #include "webgpu/webgpu.hpp"
 
 #include <filesystem>
@@ -63,6 +64,60 @@ bool loadGeometry(const fs::path& path, std::vector<float>& pointData, std::vect
         }
     }
     return true;
+}
+
+bool loadGeometryFromObj(const fs::path& path, std::vector<VertexAttributes>& vertexData) {
+	tinyobj::attrib_t attrib;
+	std::vector<tinyobj::shape_t> shapes;
+	std::vector<tinyobj::material_t> materials;
+
+	std::string warn;
+	std::string err;
+
+	bool ret = tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, path.string().c_str());
+
+	if (!warn.empty()) {
+		std::cout << warn << std::endl;
+	}
+
+	if (!err.empty()) {
+		std::cerr << err << std::endl;
+	}
+
+	if (!ret) {
+		return false;
+	}
+
+	// Fill in vertexData here
+	vertexData.clear();
+	for (const auto& shape : shapes) {
+		size_t offset = vertexData.size();
+		vertexData.resize(offset + shape.mesh.indices.size());
+
+		for (int i = 0; i < vertexData.size(); ++i) {
+			const tinyobj::index_t& idx = shape.mesh.indices[i];
+
+			vertexData[offset + i].position = {
+				attrib.vertices[3 * idx.vertex_index + 0],
+				-attrib.vertices[3 * idx.vertex_index + 2],
+				attrib.vertices[3 * idx.vertex_index + 1]
+			};
+
+			vertexData[offset + i].normal = {
+				attrib.normals[3 * idx.normal_index + 0],
+				-attrib.normals[3 * idx.normal_index + 2],
+				attrib.normals[3 * idx.normal_index + 1]
+			};
+
+			vertexData[offset + i].color = {
+				attrib.colors[3 * idx.vertex_index + 0],
+				attrib.colors[3 * idx.vertex_index + 1],
+				attrib.colors[3 * idx.vertex_index + 2]
+			};
+		}
+	}
+
+	return true;
 }
 
 wgpu::ShaderModule loadShaderModule(const fs::path& path, wgpu::Device device) {

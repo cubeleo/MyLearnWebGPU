@@ -7,3 +7,6 @@
 [submodule "Import/glm"]
 	path = Import/glm
 	url = https://github.com/g-truc/glm.git
+[submodule "Import/tinyobjloader"]
+	path = Import/tinyobjloader
+	url = https://github.com/tinyobjloader/tinyobjloader.git
