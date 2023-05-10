@@ -33,7 +33,7 @@ fn vs_main(in: VertexInput) -> VertexOutput
     let viewPosition = viewFromObject * vec4<f32>(in.position, 1.);
 
     out.position = myUniforms.clipFromView * viewPosition;
-    out.normal = (viewFromObject * vec4<f32>(in.normal, 0.)).xyz;
+    out.normal = (myUniforms.worldFromObject * vec4<f32>(in.normal, 0.)).xyz;
     out.color = in.color;
     return out;
 }
