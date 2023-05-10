@@ -46,18 +46,34 @@ struct Application
 
     bool Shutdown();
 
+    static void StaticOnWindowResize(GLFWwindow * window, int width, int height)
+    {
+        auto that = reinterpret_cast<Application *>(glfwGetWindowUserPointer(window));
+        if (that != nullptr) that->OnWindowResize(width, height);
+    }
+
+    void OnWindowResize(int width, int height);
+
+    void BuildSwapChain();
+    void BuildDepthBuffer();
+
     GLFWwindow * window = nullptr;
     wgpu::Instance instance = nullptr;
     wgpu::Surface surface = nullptr;
     wgpu::Device device = nullptr;
     wgpu::Adapter adapter = nullptr;
     wgpu::Queue queue = nullptr;
+    wgpu::TextureFormat swapChainFormat = wgpu::TextureFormat::Undefined;
     wgpu::SwapChain swapChain = nullptr;
     wgpu::RenderPipeline pipeline = nullptr;
+    wgpu::TextureFormat depthTextureFormat = wgpu::TextureFormat::Undefined;
+    wgpu::Texture depthTexture = nullptr;
     wgpu::TextureView depthTextureView = nullptr;
     wgpu::Buffer vertexBuffer = nullptr;
     wgpu::Buffer uniformBuffer = nullptr;
     wgpu::BindGroup bindGroup = nullptr;
+
+    uint32_t windowWidth = 640, windowHeight = 480;
 
     int vertexBufferSize;
     int indexCount;
@@ -74,7 +90,7 @@ bool Application::Initialize()
     }
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    window = glfwCreateWindow(640, 480, "Learn WebGPU", NULL, NULL);
+    window = glfwCreateWindow(windowWidth, windowHeight, "Learn WebGPU", NULL, NULL);
     if (!window)
     {
         std::cerr << "Could not open window!\n";
@@ -174,39 +190,9 @@ bool Application::Initialize()
     std::cout << "Got queue: " << queue << std::endl;
 
 
-    wgpu::SwapChainDescriptor swapChainDesc{};
-    swapChainDesc.width = 640;
-    swapChainDesc.height = 480;
-    wgpu::TextureFormat swapChainFormat = surface.getPreferredFormat(adapter);
-    swapChainDesc.format = swapChainFormat;
-    swapChainDesc.usage = wgpu::TextureUsage::RenderAttachment;
-    swapChainDesc.presentMode = wgpu::PresentMode::Fifo;
-    swapChain = device.createSwapChain(surface, swapChainDesc);
-    std::cout << "Swapchain: " << swapChain << std::endl;
-    std::cout << "Swapchain format: " << swapChainFormat << std::endl;
+    BuildSwapChain();
 
-    wgpu::TextureFormat depthTextureFormat = wgpu::TextureFormat::Depth24Plus;
-
-    wgpu::TextureDescriptor depthTextureDesc;
-    depthTextureDesc.dimension = wgpu::TextureDimension::_2D;
-    depthTextureDesc.format = depthTextureFormat;
-    depthTextureDesc.mipLevelCount = 1;
-    depthTextureDesc.sampleCount = 1;
-    depthTextureDesc.size = { 640, 480, 1 };
-    depthTextureDesc.usage = wgpu::TextureUsage::RenderAttachment;
-    depthTextureDesc.viewFormatCount = 1;
-    depthTextureDesc.viewFormats = (WGPUTextureFormat*)&depthTextureFormat;
-    wgpu::Texture depthTexture = device.createTexture(depthTextureDesc);
-
-    wgpu::TextureViewDescriptor depthTextureViewDesc;
-    depthTextureViewDesc.aspect = wgpu::TextureAspect::DepthOnly;
-    depthTextureViewDesc.baseArrayLayer = 0;
-    depthTextureViewDesc.arrayLayerCount = 1;
-    depthTextureViewDesc.baseMipLevel = 0;
-    depthTextureViewDesc.mipLevelCount = 1;
-    depthTextureViewDesc.dimension = wgpu::TextureViewDimension::_2D;
-    depthTextureViewDesc.format = depthTextureFormat;
-    depthTextureView = depthTexture.createView(depthTextureViewDesc);
+    BuildDepthBuffer();
 
     wgpu::ShaderModule shaderModule = loadShaderModule(RESOURCE_DIR "/shader.wgsl", device);
 
@@ -343,6 +329,9 @@ bool Application::Initialize()
     bindGroupDesc.entries = &bindGroupEntry;
     bindGroup = device.createBindGroup(bindGroupDesc);
 
+	glfwSetWindowUserPointer(window, this);
+	glfwSetFramebufferSizeCallback(window, StaticOnWindowResize);
+
     return true;
 }
 
@@ -389,7 +378,7 @@ void Application::OnFrame()
     myUniforms.viewFromWorld = T2 * R2;
 
     // Projection matrix
-    float ratio = 640.0f / 480.0f;
+    float ratio = float(windowWidth) / float(windowHeight);
     float near = 0.01f;
     float far = 100.0f;
     float focalLength = 2.0f;
@@ -453,6 +442,59 @@ void Application::OnFrame()
     swapChain.present();
 
     myUniforms.time += .01f;
+}
+
+void Application::OnWindowResize(int width, int height)
+{
+    windowWidth = width;
+    windowHeight = height;
+
+    BuildSwapChain();
+    BuildDepthBuffer();
+}
+
+void Application::BuildSwapChain()
+{
+    swapChainFormat = surface.getPreferredFormat(adapter);
+
+	wgpu::SwapChainDescriptor swapChainDesc = {};
+	swapChainDesc.width = (uint32_t)windowWidth;
+	swapChainDesc.height = (uint32_t)windowHeight;
+	swapChainDesc.usage = wgpu::TextureUsage::RenderAttachment | wgpu::TextureUsage::TextureBinding;
+	swapChainDesc.format = swapChainFormat;
+	swapChainDesc.presentMode = wgpu::PresentMode::Fifo;
+	swapChain = device.createSwapChain(surface, swapChainDesc);
+}
+
+void Application::BuildDepthBuffer()
+{
+	if (depthTexture != nullptr)
+    {
+        depthTexture.destroy();
+    }
+
+    depthTextureFormat = wgpu::TextureFormat::Depth24Plus;
+
+    wgpu::TextureDescriptor depthTextureDesc;
+    depthTextureDesc.dimension = wgpu::TextureDimension::_2D;
+    depthTextureDesc.format = depthTextureFormat;
+    depthTextureDesc.mipLevelCount = 1;
+    depthTextureDesc.sampleCount = 1;
+    depthTextureDesc.size = { windowWidth, windowHeight, 1 };
+    depthTextureDesc.usage = wgpu::TextureUsage::RenderAttachment;
+    depthTextureDesc.viewFormatCount = 1;
+    depthTextureDesc.viewFormats = (WGPUTextureFormat*)&depthTextureFormat;
+    depthTexture = device.createTexture(depthTextureDesc);
+
+    wgpu::TextureViewDescriptor depthTextureViewDesc;
+    depthTextureViewDesc.aspect = wgpu::TextureAspect::DepthOnly;
+    depthTextureViewDesc.baseArrayLayer = 0;
+    depthTextureViewDesc.arrayLayerCount = 1;
+    depthTextureViewDesc.baseMipLevel = 0;
+    depthTextureViewDesc.mipLevelCount = 1;
+    depthTextureViewDesc.dimension = wgpu::TextureViewDimension::_2D;
+    depthTextureViewDesc.format = depthTextureFormat;
+    depthTextureView = depthTexture.createView(depthTextureViewDesc);
 }
 
 int main(int argc, char ** argv)
