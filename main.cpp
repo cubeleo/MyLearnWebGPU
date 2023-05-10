@@ -409,7 +409,7 @@ void Application::OnFrame()
 
     wgpu::RenderPassDepthStencilAttachment depthStencilAttachment;
     depthStencilAttachment.view = depthTextureView;
-    depthStencilAttachment.depthClearValue = 100.0f;
+    depthStencilAttachment.depthClearValue = 1.0f;
     depthStencilAttachment.depthLoadOp = wgpu::LoadOp::Clear;
     depthStencilAttachment.depthStoreOp = wgpu::StoreOp::Store;
     depthStencilAttachment.depthReadOnly = false;
@@ -460,7 +460,7 @@ void Application::BuildSwapChain()
 	wgpu::SwapChainDescriptor swapChainDesc = {};
 	swapChainDesc.width = (uint32_t)windowWidth;
 	swapChainDesc.height = (uint32_t)windowHeight;
-	swapChainDesc.usage = wgpu::TextureUsage::RenderAttachment | wgpu::TextureUsage::TextureBinding;
+	swapChainDesc.usage = wgpu::TextureUsage::RenderAttachment;
 	swapChainDesc.format = swapChainFormat;
 	swapChainDesc.presentMode = wgpu::PresentMode::Fifo;
 	swapChain = device.createSwapChain(surface, swapChainDesc);
